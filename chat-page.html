@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>喵喵喵</title>
+    <link rel="stylesheet" href="chat-page-style.css">
+</head>
+<body>
+	<div class="chat-container">
+	  <div class="chat">
+		<a href="home-page.html" class="back-text">Back</a>
+		<div class="chat-history" id="chatHistory"></div>
+	  </div>
+	  <div class="input-container">
+		<input type="text" id="userInput" placeholder="请输入您的问题...">
+		<button id="sendButton">发送</button>
+		<button id="voiceButton">
+		  <img src="images/icon.svg" alt="语音输入" />
+		</button>
+	  </div>
+	</div>
+</body>
+</body>
+	<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script>
+        const sendButton = document.getElementById('sendButton');
+        const userInput = document.getElementById('userInput');
+        const chatHistory = document.getElementById('chatHistory');
+        const voiceButton = document.getElementById('voiceButton');
+
+        const sessionId = Date.now().toString();
+		
+		function goToHomePage() {
+			window.location.href = "home-page.html";
+			}
+		
+		async function getTtsUrl(text) {
+			const url = `http://26.26.26.1:5000/api/v1/get_tts_url?text=${text}`;
+			try {
+				console.log('TTS API Input:', text);
+				const response = await axios.get(url);
+				if (response.status === 200) {
+					return response.data.url;
+				} else {
+					console.error('Error in TTS API:', response.status, response.statusText);
+				}
+			} catch (error) {
+				console.error('Error in TTS API:', error);
+			}
+		}
+
+		
+        let context = {};
+
+        userInput.addEventListener('input', () => {
+            sendButton.disabled = userInput.value.trim() === '';
+        });
+
+        userInput.addEventListener('keydown', (event) => {
+            if (event.code === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        });
+
+        voiceButton.addEventListener('mousedown', startVoiceInput);
+
+        function startVoiceInput() {
+            voiceButton.classList.add('recording');
+            const recognition = new webkitSpeechRecognition();
+            recognition.lang = 'zh-CN';
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.onresult = (event) => {
+                const result = event.results[event.results.length - 1][0].transcript.trim();
+                if (result.length >= 5) {
+                    userInput.value = result;
+                    sendButton.click();
+                }
+            };
+            recognition.onerror = (event) => {
+                console.error(event.error);
+            };
+            recognition.onend = () => {
+                voiceButton.classList.remove('recording');
+            };
+            recognition.start();
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+		
+		
+		let conversationHistory = '';
+
+		
+        async function sendMessage() {
+            const userQuestion = userInput.value;
+			conversationHistory += userQuestion + ' ';
+			const question = conversationHistory;
+
+            chatHistory.innerHTML += `
+                <div class="user-message">
+                    <p>${userQuestion}</p>
+                </div>
+            `;
+
+            userInput.value = '';
+            sendButton.disabled = true;
+            scrollToBottom(chatHistory);
+		
+			const response = await sendToChatGpt(question, userQuestion);
+			
+			// 调用 TTS API 并获取音频链接
+			const ttsUrl = await getTtsUrl(response);
+
+			// 用于播放音频的方法
+			function playAudio(url) {
+				const audio = new Audio(url);
+				audio.play();
+			}
+
+			// 播放通过 TTS API 获取的音频
+			playAudio(ttsUrl);
+
+			
+			// 将ChatGPT的回答添加到conversationHistory变量
+			conversationHistory += response + ' ';
+			
+			
+
+            chatHistory.innerHTML += `
+                <div class="bot-message">
+                    <p>${response}</p>
+                </div>
+            `;
+          
+
+            scrollToBottom(chatHistory);
+        }
+
+
+        function scrollToBottom(element) {
+            element.scrollTop = element.scrollHeight;
+        }
+
+        async function sendToChatGpt(question,userQuestion) {
+            const url = 'http://localhost:5000/api/chatgpt';
+			const prompt_template = decodeURIComponent(new URLSearchParams(window.location.search).get('prompt_template'));
+			const prompt_type = decodeURIComponent(new URLSearchParams(window.location.search).get('prompt_type'));    
+            const body = {
+                sessionId,
+				prompt_type,
+				userQuestion,
+                question:`${prompt_template} ${question}`
+				};
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to get response from ChatGpt API');
+        }
+
+        const data = await response.json();
+		console.log(question);  // 输出返回的数据结构
+		console.log(data);  // 输出返回的数据结构
+		console.log('打印userQuestion' + userQuestion);  // 输出userSingleQuestion
+        return data.answer;
+    }
+</script>|
